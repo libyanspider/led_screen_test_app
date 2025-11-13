@@ -40,6 +40,10 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
   String _statusMessage = 'Not connected';
   int _packetsReceived = 0;
   bool _showDebug = true;
+  bool _showDetailedDebug = false;
+  List<String> _debugLog = [];
+  String _lastRawHex = '';
+  String _lastParsedInfo = '';
 
   @override
   void initState() {
@@ -83,27 +87,74 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
     try {
       setState(() {
         _packetsReceived++;
+
+        // Update raw hex display
+        _lastRawHex = data
+            .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+            .join(' ');
+
+        // Add to debug log
+        _addToDebugLog('Packet #$_packetsReceived: ${data.length} bytes');
+        _addToDebugLog('Raw: $_lastRawHex');
       });
 
-      if (data.length < 6) return;
+      if (data.length < 6) {
+        _addToDebugLog(
+            'ERROR: Packet too short (${data.length} bytes, need at least 6)');
+        setState(() {
+          _lastParsedInfo = 'ERROR: Packet too short';
+        });
+        return;
+      }
 
+      // Parse header
+      int frameNum = data[0] | (data[1] << 8);
+      int ignore1 = data[2] | (data[3] << 8);
       int numPoints = data[4] | (data[5] << 8);
       int expectedLength = 6 + (numPoints * 4);
-      if (data.length < expectedLength) return;
 
+      setState(() {
+        _lastParsedInfo =
+            'Frame: $frameNum, Points: $numPoints, Length: ${data.length}/$expectedLength';
+      });
+      _addToDebugLog(
+          'Frame: 0x${frameNum.toRadixString(16)}, Ignore: 0x${ignore1.toRadixString(16)}, Points: $numPoints');
+
+      if (data.length < expectedLength) {
+        _addToDebugLog(
+            'ERROR: Not enough data for $numPoints points (have ${data.length}, need $expectedLength)');
+        return;
+      }
+
+      // Parse and add touch points
       for (int i = 0; i < numPoints; i++) {
         int offset = 6 + (i * 4);
         int x = data[offset] | (data[offset + 1] << 8);
         int y = data[offset + 2] | (data[offset + 3] << 8);
 
+        _addToDebugLog(
+            'Point $i: X=$x (0x${data[offset].toRadixString(16)} 0x${data[offset + 1].toRadixString(16)}), Y=$y (0x${data[offset + 2].toRadixString(16)} 0x${data[offset + 3].toRadixString(16)})');
+
         // Add touch effect to the game
         game.addTouchEffect(x.toDouble(), y.toDouble());
       }
+
+      _addToDebugLog('---');
     } catch (e) {
       setState(() {
         _statusMessage = 'Parse error: $e';
       });
+      _addToDebugLog('EXCEPTION: $e');
     }
+  }
+
+  void _addToDebugLog(String message) {
+    setState(() {
+      _debugLog.add('${DateTime.now().toString().substring(11, 23)}: $message');
+      if (_debugLog.length > 50) {
+        _debugLog.removeAt(0);
+      }
+    });
   }
 
   @override
@@ -163,15 +214,151 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
               ),
             ),
 
-          // Toggle debug button
+          // Toggle debug buttons
           Positioned(
             top: 20,
             right: 20,
-            child: FloatingActionButton.small(
-              onPressed: () => setState(() => _showDebug = !_showDebug),
-              child: Icon(_showDebug ? Icons.visibility_off : Icons.visibility),
+            child: Column(
+              children: [
+                FloatingActionButton.small(
+                  onPressed: () => setState(() => _showDebug = !_showDebug),
+                  tooltip: 'Toggle basic debug',
+                  child: Icon(
+                      _showDebug ? Icons.visibility_off : Icons.visibility),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  onPressed: () =>
+                      setState(() => _showDetailedDebug = !_showDetailedDebug),
+                  tooltip: 'Toggle detailed debug',
+                  backgroundColor: Colors.purple,
+                  child: const Icon(Icons.bug_report),
+                ),
+              ],
             ),
           ),
+
+          // Detailed Debug Console
+          if (_showDetailedDebug)
+            Positioned(
+              bottom: 20,
+              left: 20,
+              right: 20,
+              child: Container(
+                height: 400,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.purple, width: 2),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'DEBUG CONSOLE',
+                          style: TextStyle(
+                            color: Colors.purple,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.copy,
+                              color: Colors.white70, size: 20),
+                          onPressed: () {
+                            // Copy debug log to clipboard
+                            final log = _debugLog.join('\n');
+                            // You can implement clipboard copy here if needed
+                            print('Debug log:\n$log');
+                          },
+                          tooltip: 'Copy to clipboard (check console)',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.clear,
+                              color: Colors.white70, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _debugLog.clear();
+                            });
+                          },
+                          tooltip: 'Clear log',
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.purple),
+                    Text(
+                      'Last Raw (Hex): $_lastRawHex',
+                      style: const TextStyle(
+                        color: Colors.yellow,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Parsed: $_lastParsedInfo',
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const Divider(color: Colors.purple),
+                    const Text(
+                      'Recent Packets:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: ListView.builder(
+                          reverse: true,
+                          itemCount: _debugLog.length,
+                          itemBuilder: (context, index) {
+                            final logIndex = _debugLog.length - 1 - index;
+                            final log = _debugLog[logIndex];
+                            Color textColor = Colors.white70;
+
+                            if (log.contains('ERROR')) {
+                              textColor = Colors.red;
+                            } else if (log.contains('Point')) {
+                              textColor = Colors.cyan;
+                            } else if (log.contains('Packet #')) {
+                              textColor = Colors.green;
+                            }
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                log,
+                                style: TextStyle(
+                                  color: textColor,
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
