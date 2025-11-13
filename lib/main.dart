@@ -45,6 +45,12 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
   String _lastRawHex = '';
   String _lastParsedInfo = '';
 
+  // Track coordinate ranges
+  int _minX = 999999;
+  int _maxX = 0;
+  int _minY = 999999;
+  int _maxY = 0;
+
   @override
   void initState() {
     super.initState();
@@ -132,6 +138,12 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
         int x = data[offset] | (data[offset + 1] << 8);
         int y = data[offset + 2] | (data[offset + 3] << 8);
 
+        // Track min/max coordinates
+        if (x < _minX) _minX = x;
+        if (x > _maxX) _maxX = x;
+        if (y < _minY) _minY = y;
+        if (y > _maxY) _maxY = y;
+
         _addToDebugLog(
             'Point $i: X=$x (0x${data[offset].toRadixString(16)} 0x${data[offset + 1].toRadixString(16)}), Y=$y (0x${data[offset + 2].toRadixString(16)} 0x${data[offset + 3].toRadixString(16)})');
 
@@ -159,6 +171,8 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -203,11 +217,18 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
                     const SizedBox(height: 4),
                     Text(
                       'Packets: $_packetsReceived',
-                      style: const TextStyle(color: Colors.white70),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    Text(
+                      'Window: ${size.width.toInt()}x${size.height.toInt()}',
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     Text(
                       'FPS: ${game.fps.toStringAsFixed(0)}',
-                      style: const TextStyle(color: Colors.white70),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ],
                 ),
@@ -290,11 +311,71 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
                       ],
                     ),
                     const Divider(color: Colors.purple),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Window Size: ${size.width.toInt()}x${size.height.toInt()}',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Coordinate Ranges (All-Time):',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _minX == 999999
+                                    ? '  X: No data yet'
+                                    : '  X: $_minX to $_maxX (range: ${_maxX - _minX})',
+                                style: const TextStyle(
+                                  color: Colors.lightBlue,
+                                  fontSize: 10,
+                                ),
+                              ),
+                              Text(
+                                _minY == 999999
+                                    ? '  Y: No data yet'
+                                    : '  Y: $_minY to $_maxY (range: ${_maxY - _minY})',
+                                style: const TextStyle(
+                                  color: Colors.lightBlue,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh,
+                              color: Colors.white70, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _minX = 999999;
+                              _maxX = 0;
+                              _minY = 999999;
+                              _maxY = 0;
+                            });
+                          },
+                          tooltip: 'Reset min/max values',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     Text(
                       'Last Raw (Hex): $_lastRawHex',
                       style: const TextStyle(
                         color: Colors.yellow,
-                        fontSize: 11,
+                        fontSize: 10,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -303,7 +384,7 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
                       'Parsed: $_lastParsedInfo',
                       style: const TextStyle(
                         color: Colors.green,
-                        fontSize: 11,
+                        fontSize: 10,
                       ),
                     ),
                     const Divider(color: Colors.purple),
