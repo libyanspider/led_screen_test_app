@@ -51,6 +51,17 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
   int _minY = 999999;
   int _maxY = 0;
 
+  // Coordinate mapping configuration
+  bool _enableMapping = true;
+  double _sensorMinX = 16.0;
+  double _sensorMaxX = 1392.0;
+  double _sensorMinY = 1728.0;
+  double _sensorMaxY = 3504.0;
+  double _targetMinX = 0.0;
+  double _targetMaxX = 1711.0;
+  double _targetMinY = 1684.0; // Bottom screen starts here (half of 3368)
+  double _targetMaxY = 3368.0; // Bottom of combined display
+
   @override
   void initState() {
     super.initState();
@@ -144,11 +155,28 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
         if (y < _minY) _minY = y;
         if (y > _maxY) _maxY = y;
 
-        _addToDebugLog(
-            'Point $i: X=$x (0x${data[offset].toRadixString(16)} 0x${data[offset + 1].toRadixString(16)}), Y=$y (0x${data[offset + 2].toRadixString(16)} 0x${data[offset + 3].toRadixString(16)})');
+        // Map coordinates if enabled
+        double mappedX = x.toDouble();
+        double mappedY = y.toDouble();
 
-        // Add touch effect to the game
-        game.addTouchEffect(x.toDouble(), y.toDouble());
+        if (_enableMapping) {
+          // Linear mapping: sensor range -> target range
+          mappedX = _targetMinX +
+              ((x - _sensorMinX) / (_sensorMaxX - _sensorMinX)) *
+                  (_targetMaxX - _targetMinX);
+
+          mappedY = _targetMinY +
+              ((y - _sensorMinY) / (_sensorMaxY - _sensorMinY)) *
+                  (_targetMaxY - _targetMinY);
+        }
+
+        _addToDebugLog(
+            'Point $i: Raw X=$x, Y=$y -> Mapped X=${mappedX.toInt()}, Y=${mappedY.toInt()}');
+        _addToDebugLog(
+            '  Hex: X=(0x${data[offset].toRadixString(16)} 0x${data[offset + 1].toRadixString(16)}), Y=(0x${data[offset + 2].toRadixString(16)} 0x${data[offset + 3].toRadixString(16)})');
+
+        // Add touch effect to the game with mapped coordinates
+        game.addTouchEffect(mappedX, mappedY);
       }
 
       _addToDebugLog('---');
@@ -369,6 +397,72 @@ class _LEDInteractiveGameScreenState extends State<LEDInteractiveGameScreen> {
                           tooltip: 'Reset min/max values',
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Coordinate mapping section
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border:
+                            Border.all(color: Colors.purple.withOpacity(0.5)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'Coordinate Mapping',
+                                style: TextStyle(
+                                  color: Colors.purple,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _enableMapping ? 'ON' : 'OFF',
+                                style: TextStyle(
+                                  color: _enableMapping
+                                      ? Colors.green
+                                      : Colors.red,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Switch(
+                                value: _enableMapping,
+                                onChanged: (val) =>
+                                    setState(() => _enableMapping = val),
+                                activeColor: Colors.purple,
+                              ),
+                            ],
+                          ),
+                          if (_enableMapping) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Sensor: X[${_sensorMinX.toInt()}-${_sensorMaxX.toInt()}] Y[${_sensorMinY.toInt()}-${_sensorMaxY.toInt()}]',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 9),
+                            ),
+                            Text(
+                              'Target: X[${_targetMinX.toInt()}-${_targetMaxX.toInt()}] Y[${_targetMinY.toInt()}-${_targetMaxY.toInt()}]',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 9),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Bottom screen projection enabled',
+                              style: const TextStyle(
+                                  color: Colors.greenAccent,
+                                  fontSize: 9,
+                                  fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
